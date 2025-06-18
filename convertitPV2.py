@@ -86,33 +86,51 @@ def merge_etudiants(etudiants_list):
 
     return final_etudiants
 
-def convertit(fichier, progress_queue=None):
-    doc = fitz.open(fichier)
-    
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        results = pool.starmap(traiter_page, [(fichier, i) for i in range(1, len(doc) - 1)])
-
-    etudiants = merge_etudiants(results)
-
-    df = pd.DataFrame.from_dict(data=etudiants, orient='index')
-    out=fichier.replace(".pdf", ".xlsx")
+def export(fichier, df, simple=""):
+    out=fichier.replace(".pdf", simple+".xlsx")
     df.to_excel(out,  engine="openpyxl")
     wb = load_workbook(out)
     ws = wb.active
-    header_fill = PatternFill(start_color="0072C6", end_color="0072C6", fill_type="solid")  # Bleu pour les entêtes
-    header_font = Font(color="FFFFFF", bold=True)  # Texte blanc et en gras
-
-    first_col_fill = PatternFill(start_color="0072C6", end_color="0072C6", fill_type="solid")  # Bleu pour la 1ère colonne
-    first_col_font = Font(color="FFFFFF", bold=True)  # Texte blanc et en gras
-
     row_fill1 = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")  # Blanc
     row_fill2 = PatternFill(start_color="FFEFD5", end_color="FFEFD5", fill_type="solid")  # Orange clair
 
     header_alignment = Alignment(wrap_text=True, horizontal="center", vertical="center")  
 
+    couleurs = {
+        "I": "003050",
+        "C": "C20E1A",
+        "E": "868686",
+        "P": "612978",
+        "M": "8A2F84",
+        "X": "B39CC8",
+        "T": "B0D2BE",
+        "L": "009CDD",
+        "B": "A6C236",
+        "V": "CE5C37",
+
+        "default": "999999"
+    }
+    polices = {
+        "I": "FFFFFF",  # blanc sur fond #003050
+        "C": "FFFFFF",  # blanc sur fond #C20E1A (très foncé)
+        "E": "FFFFFF",  # blanc sur fond #868686 (gris foncé)
+        "P": "FFFFFF",  # blanc sur fond #612978
+        "M": "FFFFFF",  # blanc sur fond #8A2F84
+        "X": "000000",  # noir sur fond #B39CC8 (clair)
+        "T": "000000",  # noir sur fond #B0D2BE (clair)
+        "L": "FFFFFF",  # blanc sur fond #009CDD
+        "V": "000000",  # noir sur fond #A6C236 (clair)
+        "B": "000000",  # noir sur fond #A6C236 (clair)
+        "default": "FFFFFF"  # noir sur fond #DC972A (clair)
+    }
+
     for cell in ws[1]:  
-        cell.fill = header_fill
-        cell.font = header_font
+        if isinstance(cell.value, str) and len(cell.value)>6 and cell.value[6] in "ICEPMXTLVB":
+            cell.fill = PatternFill(start_color=couleurs[cell.value[6]], end_color=couleurs[cell.value[6]], fill_type="solid")
+            cell.font = Font(color=polices[cell.value[6]], bold=True)
+        else:
+            cell.fill = PatternFill(start_color=couleurs["default"], end_color=couleurs["default"], fill_type="solid")
+            cell.font = Font(color=polices["default"], bold=True)
         cell.alignment = header_alignment
 
     for row_index, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
@@ -150,6 +168,26 @@ def convertit(fichier, progress_queue=None):
         ws.column_dimensions[col_letter].width = max_length + 4  # Ajustement dynamique
 
     wb.save(out)
+
+def convertit(fichier, progress_queue=None):
+    doc = fitz.open(fichier)
+    
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        results = pool.starmap(traiter_page, [(fichier, i) for i in range(1, len(doc) - 1)])
+
+    etudiants = merge_etudiants(results)
+
+    df = pd.DataFrame.from_dict(data=etudiants, orient='index')
+    df2 = pd.DataFrame.from_dict(data=etudiants, orient='index')
+    df2 = df2.rename(columns={col: col.split()[0] for col in df.columns})
+    colonnes_a_garder = list(df2.columns[:3]) + [col for col in df2.columns[3:] 
+                                         if len(str(col)) == 7 or 
+                                            str(col)[-1].isdigit() or (len(str(col))>6) and col[6]=='L']
+
+    # Filtrer le DataFrame
+    df_simple = df2[colonnes_a_garder]
+    export(fichier, df)
+    export(fichier, df_simple,"-simple")
     return df
 
 if __name__ == "__main__":
@@ -158,3 +196,5 @@ if __name__ == "__main__":
     else:
         print("Usage: convertitPV fichier.pdf")
         print("Attention: l'information des UEs acquises antérieurement disparait.")
+
+
